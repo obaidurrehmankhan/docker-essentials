@@ -5,9 +5,9 @@ Minimal repo to learn and demo the **15 core Docker concepts** used in everyday 
 
 ## What’s inside
 
-* **/concepts/** – one-pagers for each concept
-* **/cheatsheet/** – concise command cheat sheets
-* **/demo/** – Node API, Nginx UI, Postgres + Compose files (To do)
+* **/Concepts/** – one-pagers for each concept
+* **/CheatSheet/** – concise command cheat sheets
+* **/docker-demo/** – Next.js + Express + Postgres
 
 ## The 15 concepts
 
@@ -27,7 +27,7 @@ Minimal repo to learn and demo the **15 core Docker concepts** used in everyday 
 14. Resource Limits (CPU/Memory)
 15. Security Basics (non-root, caps, read-only)
 
-## Quick start (demo) - To do
+## Quick start (demo)
 
 ```bash
 cd demo

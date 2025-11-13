@@ -1,0 +1,139 @@
+services:
+  # ---------------------------------------------------------------------------
+  # Postgres database that backs the API.  DATABASE_URL in the API container
+  # points at this service, so its health controls when the API may start.
+  # ---------------------------------------------------------------------------
+  db:
+    image: postgres:16
+    container_name: docker-15-nextjs-demo-db
+    environment:
+      # Values come from your .env file so both Dockerfiles can reuse them.
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      # Persist data between container recreations.
+      - dbdata:/var/lib/postgresql/data
+      # Seed schema/data on first boot; kept read-only to guard against edits.
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      # Allows depends_on.service_healthy in the API service to gate startup.
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - demo
+
+  # ---------------------------------------------------------------------------
+  # TypeScript Express API built by api/Dockerfile. Relies on the db service,
+  # exposes port 4000 internally, and feeds the web service via HTTP.
+  # ---------------------------------------------------------------------------
+  api:
+    container_name: docker-15-nextjs-demo-api
+    build:
+      # Context path matches the API Dockerfile we annotated earlier.
+      context: ./api
+    environment:
+      # DATABASE_URL feeds Prisma/drizzle; PORT_API surfaces in runtime logging.
+      DATABASE_URL: ${DATABASE_URL}
+      PORT_API: ${PORT_API}
+      NODE_ENV: ${NODE_ENV}
+    depends_on:
+      # Do not begin until Postgres passes its health check.
+      db:
+        condition: service_healthy
+    healthcheck:
+      # Mirrors the Dockerfile HEALTHCHECK so Docker Desktop shows consistent
+      # status regardless of whether you run compose or a bare container.
+      test: ["CMD", "curl", "-f", "http://localhost:4000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    # Harden the container to match the node user created in the Dockerfile.
+    security_opt:
+      - no-new-privileges:true
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+    networks:
+      - demo
+
+  # ---------------------------------------------------------------------------
+  # Next.js frontend built by web/Dockerfile.  Talks to the API via the demo
+  # network and is exposed publicly on host port 8080.
+  # ---------------------------------------------------------------------------
+  web:
+    container_name: docker-15-nextjs-demo-web
+    build:
+      context: ./web
+    ports:
+      # Browser -> host:8080 -> container:3000 (default Next.js start script).
+      - "8080:3000"
+    environment:
+      PORT_WEB: ${PORT_WEB}
+      NODE_ENV: ${NODE_ENV}
+    depends_on:
+      # Wait for the API health check to succeed before booting Next.js.
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    security_opt:
+      - no-new-privileges:true
+    user: "10001:10001"
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+    deploy:
+      resources:
+        limits:
+          cpus: "0.50"
+          memory: 512M
+    networks:
+      - demo
+
+  # ---------------------------------------------------------------------------
+  # Optional Redis cache layer.  Currently no other service depends on it, but
+  # keeping it on the same user-defined bridge simplifies future wiring.
+  # ---------------------------------------------------------------------------
+  cache:
+    image: redis:7
+    container_name: docker-15-nextjs-demo-cache
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    networks:
+      - demo
+
+# Docker keeps Postgres data in this named volume so `docker compose down`
+# does not wipe your database unless you pass `-v`.
+volumes:
+  dbdata:
+
+# Custom network isolates the stack from other compose projects while still
+# letting containers discover each other by service name (db, api, web, cache).
+networks:
+  demo:
+    driver: bridge

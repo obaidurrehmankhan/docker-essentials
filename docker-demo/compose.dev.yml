@@ -1,0 +1,24 @@
+services:
+  # These overrides are only active when you run `make up-dev`, which includes
+  # this file with `--profile dev`.  They swap the production containers for
+  # live-mounted source code so changes reflect immediately without rebuilding
+  # the Dockerfiles.
+  api:
+    profiles: ["dev"]
+    volumes:
+      # Mirror your local api/ tree into /app so Nodemon or ts-node see edits.
+      - ./api:/app
+      # Leave node_modules inside the container to avoid host OS conflicts.
+      - /app/node_modules
+    # Install dependencies on start (handy for small demos) and run the dev
+    # server, which in turn respects PORT_API from compose.yml.
+    command: sh -c "npm install && npm run dev"
+    read_only: false
+  web:
+    profiles: ["dev"]
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+    # Same pattern as the API: install -> Next.js dev server.
+    command: sh -c "npm install && npm run dev"
+    read_only: false
